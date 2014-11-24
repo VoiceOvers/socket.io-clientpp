@@ -2,11 +2,8 @@
 #define PERFTEST_H_
 
 #define TEST_RAPIDJSON	1
-#define TEST_JSONCPP	0
-#define TEST_YAJL		0
-#define TEST_ULTRAJSON  0
-#define TEST_PLATFORM   0
-#define TEST_MISC		0
+#define TEST_JSONCPP	1
+#define TEST_YAJL		1
 
 #if TEST_RAPIDJSON
 //#define RAPIDJSON_SSE2
@@ -36,17 +33,18 @@
 class PerfTest : public ::testing::Test {
 public:
 	virtual void SetUp() {
-		FILE *fp = fopen(filename_ = "data/sample.json", "rb");
-		if (!fp) 
-			fp = fopen(filename_ = "../../bin/data/sample.json", "rb");
+		FILE *fp = fopen("data/sample.json", "rb");
+		if (!fp)
+			fp = fopen("../../bin/data/sample.json", "rb");
 		ASSERT_TRUE(fp != 0);
 
 		fseek(fp, 0, SEEK_END);
 		length_ = (size_t)ftell(fp);
 		fseek(fp, 0, SEEK_SET);
 		json_ = (char*)malloc(length_ + 1);
-		ASSERT_EQ(length_, fread(json_, 1, length_, fp));
+		fread(json_, 1, length_, fp);
 		json_[length_] = '\0';
+		length_++;	// include the null terminator
 		fclose(fp);
 
 		// whitespace test
@@ -71,7 +69,6 @@ public:
 	}
 
 protected:
-	const char* filename_;
 	char *json_;
 	size_t length_;
 	char *whitespace_;

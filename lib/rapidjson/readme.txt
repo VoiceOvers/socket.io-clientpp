@@ -1,10 +1,10 @@
-Rapidjson v0.1
+rapidjson v0.11
 
 Copyright (c) 2011 Milo Yip (miloyip@gmail.com)
 
 http://code.google.com/p/rapidjson/
 
-19 Nov 2011
+16 Nov 2012
 
 1. Introduction
 Rapidjson is a JSON parser and generator for C++. It was inspired by rapidxml http://rapidxml.sourceforge.net/
@@ -31,4 +31,3 @@ To build the tests and examples,
 4. On Windows, build the solution at rapidjson/build/vs2008/ or /vs2010/
 5. On other platforms, run GNU make at rapidjson/build/gmake/ (e.g., make -f test.make config=release32, make -f example.make config=debug32)
 6. On success, the executable are generated at rapidjson/bin
-
