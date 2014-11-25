@@ -21,7 +21,7 @@ protected:
 };
 
 TEST_F(JsonCpp, ReaderParse) {
-	for (size_t i = 0; i < kTrialCount; i++) {
+	for (int i = 0; i < kTrialCount; i++) {
 		Value root;
 		Reader reader;
 		ASSERT_TRUE(reader.parse(json_, root));
@@ -29,7 +29,7 @@ TEST_F(JsonCpp, ReaderParse) {
 }
 
 TEST_F(JsonCpp, FastWriter) {
-	for (size_t i = 0; i < kTrialCount; i++) {
+	for (int i = 0; i < kTrialCount; i++) {
 		FastWriter writer;
 		std::string str = writer.write(root_);
 		//if (i == 0)
@@ -38,7 +38,7 @@ TEST_F(JsonCpp, FastWriter) {
 }
 
 TEST_F(JsonCpp, StyledWriter) {
-	for (size_t i = 0; i < kTrialCount; i++) {
+	for (int i = 0; i < kTrialCount; i++) {
 		StyledWriter writer;
 		std::string str = writer.write(root_);
 		//if (i == 0)
@@ -47,7 +47,7 @@ TEST_F(JsonCpp, StyledWriter) {
 }
 
 TEST_F(JsonCpp, Whitespace) {
-	for (size_t i = 0; i < kTrialCount; i++) {
+	for (int i = 0; i < kTrialCount; i++) {
 		Value root;
 		Reader reader;
 		ASSERT_TRUE(reader.parse(whitespace_, root));

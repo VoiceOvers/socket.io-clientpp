@@ -1,5 +1,5 @@
-#ifndef RAPIDJSON_WRITER_H_
-#define RAPIDJSON_WRITER_H_
+#ifndef RAPIDJSON_STREAMWRITER_H_
+#define RAPIDJSON_STREAMWRITER_H_
 
 #include "rapidjson.h"
 #include "internal/stack.h"
@@ -11,7 +11,7 @@ namespace rapidjson {
 
 //! JSON writer
 /*! Writer implements the concept Handler.
-	It generates JSON text by events to an output os.
+	It generates JSON text by events to an output stream.
 
 	User may programmatically calls the functions of a writer to generate JSON text.
 
@@ -19,72 +19,67 @@ namespace rapidjson {
 
 	for example Reader::Parse() and Document::Accept().
 
-	\tparam OutputStream Type of output stream.
-	\tparam SourceEncoding Encoding of both source strings.
-	\tparam TargetEncoding Encoding of and output stream.
+	\tparam Stream Type of ouptut stream.
+	\tparam Encoding Encoding of both source strings and output.
 	\implements Handler
 */
-template<typename OutputStream, typename SourceEncoding = UTF8<>, typename TargetEncoding = UTF8<>, typename Allocator = MemoryPoolAllocator<> >
-class Writer {
+template<typename Stream, typename Encoding = UTF8<>, typename Allocator = MemoryPoolAllocator<> >
+class StreamWriter {
 public:
-	typedef typename SourceEncoding::Ch Ch;
+	typedef typename Encoding::Ch Ch;
 
-	Writer(OutputStream& os, Allocator* allocator = 0, size_t levelDepth = kDefaultLevelDepth) : 
-		os_(os), level_stack_(allocator, levelDepth * sizeof(Level)) {}
+	StreamWriter(Stream& stream, Allocator* allocator = 0, size_t levelDepth = kDefaultLevelDepth) : 
+		stream_(stream), level_stack_(allocator, levelDepth * sizeof(Level)) {}
 
 	//@name Implementation of Handler
 	//@{
-	Writer& Null()					{ Prefix(kNullType);   WriteNull();			return *this; }
-	Writer& Bool(bool b)			{ Prefix(b ? kTrueType : kFalseType); WriteBool(b); return *this; }
-	Writer& Int(int i)				{ Prefix(kNumberType); WriteInt(i);			return *this; }
-	Writer& Uint(unsigned u)		{ Prefix(kNumberType); WriteUint(u);		return *this; }
-	Writer& Int64(int64_t i64)		{ Prefix(kNumberType); WriteInt64(i64);		return *this; }
-	Writer& Uint64(uint64_t u64)	{ Prefix(kNumberType); WriteUint64(u64);	return *this; }
-	Writer& Double(double d)		{ Prefix(kNumberType); WriteDouble(d);		return *this; }
+	StreamWriter& Null()					{ Prefix(kNullType);   WriteNull();			return *this; }
+	StreamWriter& Bool(bool b)			{ Prefix(b ? kTrueType : kFalseType); WriteBool(b); return *this; }
+	StreamWriter& Int(int i)				{ Prefix(kNumberType); WriteInt(i);			return *this; }
+	StreamWriter& Uint(unsigned u)		{ Prefix(kNumberType); WriteUint(u);		return *this; }
+	StreamWriter& Int64(int64_t i64)		{ Prefix(kNumberType); WriteInt64(i64);		return *this; }
+	StreamWriter& Uint64(uint64_t u64)	{ Prefix(kNumberType); WriteUint64(u64);	return *this; }
+	StreamWriter& Double(double d)		{ Prefix(kNumberType); WriteDouble(d);		return *this; }
 
-	Writer& String(const Ch* str, SizeType length, bool copy = false) {
+	StreamWriter& String(const Ch* str, SizeType length, bool copy = false) {
 		Prefix(kStringType);
 		WriteString(str, length);
 		return *this;
 	}
 
-	Writer& StartObject() {
+	StreamWriter& StartObject() {
 		Prefix(kObjectType);
 		new (level_stack_.template Push<Level>()) Level(false);
 		WriteStartObject();
 		return *this;
 	}
 
-	Writer& EndObject(SizeType memberCount = 0) {
+	StreamWriter& EndObject(SizeType memberCount = 0) {
 		RAPIDJSON_ASSERT(level_stack_.GetSize() >= sizeof(Level));
 		RAPIDJSON_ASSERT(!level_stack_.template Top<Level>()->inArray);
 		level_stack_.template Pop<Level>(1);
 		WriteEndObject();
-		if (level_stack_.Empty())	// end of json text
-			os_.Flush();
 		return *this;
 	}
 
-	Writer& StartArray() {
+	StreamWriter& StartArray() {
 		Prefix(kArrayType);
 		new (level_stack_.template Push<Level>()) Level(true);
 		WriteStartArray();
 		return *this;
 	}
 
-	Writer& EndArray(SizeType elementCount = 0) {
+	StreamWriter& EndArray(SizeType elementCount = 0) {
 		RAPIDJSON_ASSERT(level_stack_.GetSize() >= sizeof(Level));
 		RAPIDJSON_ASSERT(level_stack_.template Top<Level>()->inArray);
 		level_stack_.template Pop<Level>(1);
 		WriteEndArray();
-		if (level_stack_.Empty())	// end of json text
-			os_.Flush();
 		return *this;
 	}
 	//@}
 
 	//! Simpler but slower overload.
-	Writer& String(const Ch* str) { return String(str, internal::StrLen(str)); }
+	StreamWriter& String(const Ch* str) { return String(str, internal::StrLen(str)); }
 
 protected:
 	//! Information for each nested level
@@ -97,21 +92,21 @@ protected:
 	static const size_t kDefaultLevelDepth = 32;
 
 	void WriteNull()  {
-		os_.Put('n'); os_.Put('u'); os_.Put('l'); os_.Put('l');
+		stream_.put('n'); stream_.put('u'); stream_.put('l'); stream_.put('l');
 	}
 
 	void WriteBool(bool b)  {
 		if (b) {
-			os_.Put('t'); os_.Put('r'); os_.Put('u'); os_.Put('e');
+			stream_.put('t'); stream_.put('r'); stream_.put('u'); stream_.put('e');
 		}
 		else {
-			os_.Put('f'); os_.Put('a'); os_.Put('l'); os_.Put('s'); os_.Put('e');
+			stream_.put('f'); stream_.put('a'); stream_.put('l'); stream_.put('s'); stream_.put('e');
 		}
 	}
 
 	void WriteInt(int i) {
 		if (i < 0) {
-			os_.Put('-');
+			stream_.put('-');
 			i = -i;
 		}
 		WriteUint((unsigned)i);
@@ -127,13 +122,13 @@ protected:
 
 		do {
 			--p;
-			os_.Put(*p);
+			stream_.put(*p);
 		} while (p != buffer);
 	}
 
 	void WriteInt64(int64_t i64) {
 		if (i64 < 0) {
-			os_.Put('-');
+			stream_.put('-');
 			i64 = -i64;
 		}
 		WriteUint64((uint64_t)i64);
@@ -149,7 +144,7 @@ protected:
 
 		do {
 			--p;
-			os_.Put(*p);
+			stream_.put(*p);
 		} while (p != buffer);
 	}
 
@@ -163,11 +158,11 @@ protected:
 #endif
 		RAPIDJSON_ASSERT(ret >= 1);
 		for (int i = 0; i < ret; i++)
-			os_.Put(buffer[i]);
+			stream_.put(buffer[i]);
 	}
 
 	void WriteString(const Ch* str, SizeType length)  {
-		static const char hexDigits[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
+		static const char hexDigits[] = "0123456789ABCDEF";
 		static const char escape[256] = {
 #define Z16 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 			//0    1    2    3    4    5    6    7    8    9    A    B    C    D    E    F
@@ -180,40 +175,37 @@ protected:
 #undef Z16
 		};
 
-		os_.Put('\"');
-		GenericStringStream<SourceEncoding> is(str);
-		while (is.Tell() < length) {
-			const Ch c = is.Peek();
-			if ((sizeof(Ch) == 1 || (unsigned)c < 256) && escape[(unsigned char)c])  {
-				is.Take();
-				os_.Put('\\');
-				os_.Put(escape[(unsigned char)c]);
-				if (escape[(unsigned char)c] == 'u') {
-					os_.Put('0');
-					os_.Put('0');
-					os_.Put(hexDigits[(unsigned char)c >> 4]);
-					os_.Put(hexDigits[(unsigned char)c & 0xF]);
+		stream_.put('\"');
+		for (const Ch* p = str; p != str + length; ++p) {
+			if ((sizeof(Ch) == 1 || *p < 256) && escape[(unsigned char)*p])  {
+				stream_.put('\\');
+				stream_.put(escape[(unsigned char)*p]);
+				if (escape[(unsigned char)*p] == 'u') {
+					stream_.put('0');
+					stream_.put('0');
+					stream_.put(hexDigits[(*p) >> 4]);
+					stream_.put(hexDigits[(*p) & 0xF]);
 				}
 			}
 			else
-				Transcoder<SourceEncoding, TargetEncoding>::Transcode(is, os_);
+				stream_.put(*p);
 		}
-		os_.Put('\"');
+		stream_.put('\"');
 	}
 
-	void WriteStartObject()	{ os_.Put('{'); }
-	void WriteEndObject()	{ os_.Put('}'); }
-	void WriteStartArray()	{ os_.Put('['); }
-	void WriteEndArray()	{ os_.Put(']'); }
+	void WriteStartObject()	{ stream_.put('{'); }
+	void WriteEndObject()	{ stream_.put('}'); }
+	void WriteStartArray()	{ stream_.put('['); }
+	void WriteEndArray()	{ stream_.put(']'); }
 
 	void Prefix(Type type) {
 		if (level_stack_.GetSize() != 0) { // this value is not at root
 			Level* level = level_stack_.template Top<Level>();
 			if (level->valueCount > 0) {
 				if (level->inArray) 
-					os_.Put(','); // add comma if it is not the first element in array
+					stream_.put(','); // add comma if it is not the first element in array
 				else  // in object
-					os_.Put((level->valueCount % 2 == 0) ? ',' : ':');
+					stream_.put((level->valueCount % 2 == 0) ? ',' : ':');
 			}
 			if (!level->inArray && level->valueCount % 2 == 0)
 				RAPIDJSON_ASSERT(type == kStringType);  // if it's in object, then even number should be a name
@@ -223,7 +215,7 @@ protected:
 			RAPIDJSON_ASSERT(type == kObjectType || type == kArrayType);
 	}
 
-	OutputStream& os_;
+	Stream& stream_;
 	internal::Stack<Allocator> level_stack_;
 };
 

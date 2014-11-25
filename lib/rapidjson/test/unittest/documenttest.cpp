@@ -42,17 +42,19 @@ TEST(Document, Parse) {
 	EXPECT_TRUE(doc.HasMember("a"));
 	Value& a = doc["a"];
 	EXPECT_TRUE(a.IsArray());
-	EXPECT_EQ(4u, a.Size());
+	EXPECT_EQ(4, a.Size());
 	for (SizeType i = 0; i < 4; i++)
 		EXPECT_EQ(i + 1, a[i].GetUint());
 }
 
+// This should be slow due to assignment in inner-loop.
 struct OutputStringStream : public std::ostringstream {
 	typedef char Ch;
 
 	void Put(char c) {
 		put(c);
 	}
+	void Flush() {}
 };
 
 TEST(Document, AcceptWriter) {
@@ -65,26 +67,3 @@ TEST(Document, AcceptWriter) {
 
 	EXPECT_EQ("{\"hello\":\"world\",\"t\":true,\"f\":false,\"n\":null,\"i\":123,\"pi\":3.1416,\"a\":[1,2,3,4]}", os.str());
 }
-
-// Issue 44:	SetStringRaw doesn't work with wchar_t
-TEST(Document, UTF16_Document) {
-	GenericDocument< UTF16<> > json;
-	json.Parse<0>(L"[{\"created_at\":\"Wed Oct 30 17:13:20 +0000 2012\"}]");
-
-	ASSERT_TRUE(json.IsArray());
-	GenericValue< UTF16<> >& v = json[0u];
-	ASSERT_TRUE(v.IsObject());
-
-	GenericValue< UTF16<> >& s = v[L"created_at"];
-	ASSERT_TRUE(s.IsString());
-
-	EXPECT_EQ(0, wcscmp(L"Wed Oct 30 17:13:20 +0000 2012", s.GetString()));
-}
-
-// Issue 22: Memory corruption via operator=
-// Fixed by making unimplemented assignment operator private.
-//TEST(Document, Assignment) {
-//	Document d1;
-//	Document d2;
-//	d1 = d2;
-//}

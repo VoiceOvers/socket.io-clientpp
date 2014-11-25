@@ -7,11 +7,11 @@
 * See examples at https://github.com/kennytm/rapidjson.
 */
 
-#ifndef SOCKET_IO_CLIENT_HPP
-#define SOCKET_IO_CLIENT_HPP
+#ifndef __SOCKET_IO_CLIENT_HPP__
+#define __SOCKET_IO_CLIENT_HPP__
 
-#pragma warning(disable:4355) // C4355: this used in base member initializer list
-
+// #pragma warning(disable:4355) // C4355: this used in base member initializer list
+#include <boost/tokenizer.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
@@ -21,12 +21,11 @@
 #include <rapidjson/filestream.h>
 #include <rapidjson/stringwriter.h>
 
-#undef htonll
-#undef ntohll
+// #undef htonll
+// #undef ntohll
 
 #include <websocketpp/client.hpp>
-#include <websocketpp/config/debug_asio_no_tls.hpp>
-//#include <websocketpp/websocketpp.hpp>
+#include <websocketpp/config/asio_no_tls_client.hpp>
 
 #include <map>
 #include <string>
@@ -55,36 +54,58 @@ namespace socketio {
    };
 
 
-   typedef client<config::debug_asio> client_type;
+   typedef client<config::asio_client> client_type;
 
    class socketio_client_handler {
    public:
+      socketio_client_handler() : m_heartbeatActive(false),
+         m_connected(false),
+         m_con_listener(NULL),
+         m_io_listener(NULL),
+         m_heartbeatTimeout(0),
+         m_network_thread(NULL)
+      {
+            // m_client.clear_access_channels(websocketpp::log::alevel::all);
+            // m_client.set_access_channels(websocketpp::log::alevel::connect);
+            // m_client.set_access_channels(websocketpp::log::alevel::disconnect);
+            // m_client.set_access_channels(websocketpp::log::alevel::app);
+
+            // // Initialize the Asio transport policy
+            // m_client.init_asio();
+
+            // // Bind the handlers we are using
+            // using websocketpp::lib::placeholders::_1;
+            // using websocketpp::lib::bind;
+            
+            // m_client.set_open_handler(bind(&socketio::socketio_client_handler::on_open,this,::_1));
+            // m_client.set_close_handler(bind(&socketio::socketio_client_handler::on_close,this,::_1));
+            // m_client.set_fail_handler(bind(&socketio::socketio_client_handler::on_fail,this,::_1));
+            // m_client.set_message_handler(bind(&socketio::socketio_client_handler::on_message,this,::_1,::_2));
+      };
+
+      ~socketio_client_handler() 
+      {};
       class connection_listener
       {
-      public:
-         virtual void on_fail(connection_hdl con) = 0;
-         virtual void on_open(connection_hdl con) = 0;
-         virtual void on_close(connection_hdl con) = 0;
-         virtual ~connection_listener()
-         {}
+         public:
+            virtual void on_fail(connection_hdl con) = 0;
+            virtual void on_open(connection_hdl con) = 0;
+            virtual void on_close(connection_hdl con) = 0;
+            virtual ~connection_listener()
+            {}
       };
 
 
       class socketio_listener
       {
-      public:
-         virtual void on_socketio_message(const std::string& msgEndpoint,const std::string& data, std::string* ackResponse) {};
-         virtual void on_socketio_json(const std::string& msgEndpoint, Document& json,std::string* ackResponse) {};
-         virtual void on_socketio_event(const std::string& msgEndpoint,const std::string& name, const Value& args,std::string* ackResponse) {};
-         virtual void on_socketio_error(const std::string& endppoint,const std::string& reason,const std::string& advice) {};
-         virtual ~socketio_listener()
-         {}
+         public:
+            virtual void on_socketio_message(const std::string& msgEndpoint,const std::string& data, std::string* ackResponse) {};
+            virtual void on_socketio_json(const std::string& msgEndpoint, Document& json,std::string* ackResponse) {};
+            virtual void on_socketio_event(const std::string& msgEndpoint,const std::string& name, const Value& args,std::string* ackResponse) {};
+            virtual void on_socketio_error(const std::string& endppoint,const std::string& reason,const std::string& advice) {};
+            virtual ~socketio_listener()
+            {}
       };
-
-
-      socketio_client_handler();
-
-      ~socketio_client_handler();
 
       void set_connection_listener(connection_listener *listener);
 
@@ -201,9 +222,9 @@ namespace socketio {
       socketio_listener *m_io_listener;
    };
 
+   typedef client<config::asio_client> socketio_client;
    typedef boost::shared_ptr<socketio_client_handler> socketio_client_handler_ptr;
-
 }
 
 
-#endif // SOCKET_IO_CLIENT_HPP
+#endif // __SOCKET_IO_CLIENT_HPP__

@@ -4,11 +4,6 @@
 #include "reader.h"
 #include "internal/strfunc.h"
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4127) // conditional expression is constant
-#endif
-
 namespace rapidjson {
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -152,7 +147,7 @@ public:
 				break;
 
 			case kCopyStringFlag:
-				Allocator::Free(const_cast<Ch*>(data_.s.str));
+				Allocator::Free((void*)data_.s.str);
 				break;
 			}
 		}
@@ -269,8 +264,8 @@ public:
 				o.members = (Member*)allocator.Realloc(o.members, oldCapacity * sizeof(Member), o.capacity * sizeof(Member));
 			}
 		}
-		o.members[o.size].name.RawAssign(name);
-		o.members[o.size].value.RawAssign(value);
+		o.members[o.size].name = name;
+		o.members[o.size].value = value;
 		o.size++;
 		return *this;
 	}
@@ -396,7 +391,7 @@ int z = a[0u].GetInt();				// This works too.
 		RAPIDJSON_ASSERT(IsArray());
 		if (data_.a.size >= data_.a.capacity)
 			Reserve(data_.a.capacity == 0 ? kDefaultArrayCapacity : data_.a.capacity * 2, allocator);
-		data_.a.elements[data_.a.size++].RawAssign(value);
+		data_.a.elements[data_.a.size++] = value;
 		return *this;
 	}
 
@@ -418,16 +413,16 @@ int z = a[0u].GetInt();				// This works too.
 	//!@name Number
 	//@{
 
-	int GetInt() const			{ RAPIDJSON_ASSERT(flags_ & kIntFlag);   return data_.n.i.i;   }
-	unsigned GetUint() const	{ RAPIDJSON_ASSERT(flags_ & kUintFlag);  return data_.n.u.u;   }
+	int GetInt() const			{ RAPIDJSON_ASSERT(flags_ & kIntFlag);   return data_.n.i;   }
+	unsigned GetUint() const	{ RAPIDJSON_ASSERT(flags_ & kUintFlag);  return data_.n.u;   }
 	int64_t GetInt64() const	{ RAPIDJSON_ASSERT(flags_ & kInt64Flag); return data_.n.i64; }
-	uint64_t GetUint64() const	{ RAPIDJSON_ASSERT(flags_ & kUint64Flag); return data_.n.u64; }
+	int64_t GetUint64() const	{ RAPIDJSON_ASSERT(flags_ & kInt64Flag); return data_.n.u64; }
 
 	double GetDouble() const {
 		RAPIDJSON_ASSERT(IsNumber());
 		if ((flags_ & kDoubleFlag) != 0)				return data_.n.d;	// exact type, no conversion.
-		if ((flags_ & kIntFlag) != 0)					return data_.n.i.i;	// int -> double
-		if ((flags_ & kUintFlag) != 0)					return data_.n.u.u;	// unsigned -> double
+		if ((flags_ & kIntFlag) != 0)					return data_.n.i;	// int -> double
+		if ((flags_ & kUintFlag) != 0)					return data_.n.u;	// unsigned -> double
 		if ((flags_ & kInt64Flag) != 0)					return (double)data_.n.i64; // int64_t -> double (may lose precision)
 		RAPIDJSON_ASSERT((flags_ & kUint64Flag) != 0);	return (double)data_.n.u64;	// uint64_t -> double (may lose precision)
 	}
@@ -490,7 +485,7 @@ int z = a[0u].GetInt();				// This works too.
 		\param handler An object implementing concept Handler.
 	*/
 	template <typename Handler>
-	const GenericValue& Accept(Handler& handler) const {
+	GenericValue& Accept(Handler& handler) {
 		switch(GetType()) {
 		case kNullType:		handler.Null(); break;
 		case kFalseType:	handler.Bool(false); break;
@@ -517,10 +512,10 @@ int z = a[0u].GetInt();				// This works too.
 			break;
 
 		case kNumberType:
-			if (IsInt())			handler.Int(data_.n.i.i);
-			else if (IsUint())		handler.Uint(data_.n.u.u);
+			if (IsInt())			handler.Int(data_.n.i);
+			else if (IsUint())		handler.Uint(data_.n.u);
 			else if (IsInt64())		handler.Int64(data_.n.i64);
-			else if (IsUint64())	handler.Uint64(data_.n.u64);
+			else if (IsUint64())	handler.Uint64(data_.n.i64);
 			else					handler.Double(data_.n.d);
 			break;
 		}
@@ -547,7 +542,7 @@ private:
 		kTrueFlag = kTrueType | kBoolFlag,
 		kFalseFlag = kFalseType | kBoolFlag,
 		kNumberIntFlag = kNumberType | kNumberFlag | kIntFlag | kInt64Flag,
-		kNumberUintFlag = kNumberType | kNumberFlag | kUintFlag | kUint64Flag | kInt64Flag,
+		kNumberUintFlag = kNumberType | kNumberFlag | kUintFlag | kUint64Flag,
 		kNumberInt64Flag = kNumberType | kNumberFlag | kInt64Flag,
 		kNumberUint64Flag = kNumberType | kNumberFlag | kUint64Flag,
 		kNumberDoubleFlag = kNumberType | kNumberFlag | kDoubleFlag,
@@ -571,23 +566,23 @@ private:
 	// By using proper binary layout, retrieval of different integer types do not need conversions.
 	union Number {
 #if RAPIDJSON_ENDIAN == RAPIDJSON_LITTLEENDIAN
-		struct I {
+		struct {
 			int i;
 			char padding[4];
-		}i;
-		struct U {
+		};
+		struct {
 			unsigned u;
 			char padding2[4];
-		}u;
+		};
 #else
-		struct I {
+		struct {
 			char padding[4];
 			int i;
-		}i;
-		struct U {
+		};
+		struct {
 			char padding2[4];
 			unsigned u;
-		}u;
+		};
 #endif
 		int64_t i64;
 		uint64_t u64;
@@ -618,11 +613,9 @@ private:
 		RAPIDJSON_ASSERT(name);
 		RAPIDJSON_ASSERT(IsObject());
 
-		SizeType length = internal::StrLen(name);
-
 		Object& o = data_.o;
 		for (Member* member = o.members; member != data_.o.members + data_.o.size; ++member)
-			if (length == member->name.data_.s.length && memcmp(member->name.data_.s.str, name, length * sizeof(Ch)) == 0)
+			if (name[member->name.data_.s.length] == '\0' && memcmp(member->name.data_.s.str, name, member->name.data_.s.length * sizeof(Ch)) == 0)
 				return member;
 
 		return 0;
@@ -657,10 +650,10 @@ private:
 	void SetStringRaw(const Ch* s, SizeType length, Allocator& allocator) {
 		RAPIDJSON_ASSERT(s != NULL);
 		flags_ = kCopyStringFlag;
-		data_.s.str = (Ch *)allocator.Malloc((length + 1) * sizeof(Ch));
+		data_.s.str = (Ch *)allocator.Malloc(length + 1);
 		data_.s.length = length;
-		memcpy(const_cast<Ch*>(data_.s.str), s, length * sizeof(Ch));
-		const_cast<Ch*>(data_.s.str)[length] = '\0';
+		memcpy((void*)data_.s.str, s, length);
+		((Ch*)data_.s.str)[length] = '\0';
 	}
 
 	//! Assignment without calling destructor
@@ -704,11 +697,11 @@ public:
 		\param stream Input stream to be parsed.
 		\return The document itself for fluent API.
 	*/
-	template <unsigned parseFlags, typename Stream>
-	GenericDocument& ParseStream(Stream& stream) {
+	template <unsigned parseFlags, typename SourceEncoding, typename InputStream>
+	GenericDocument& ParseStream(InputStream& is) {
 		ValueType::SetNull(); // Remove existing root if exist
-		GenericReader<Encoding, Allocator> reader;
-		if (reader.template Parse<parseFlags>(stream, *this)) {
+		GenericReader<SourceEncoding, Encoding> reader;
+		if (reader.template Parse<parseFlags>(is, *this)) {
 			RAPIDJSON_ASSERT(stack_.GetSize() == sizeof(ValueType)); // Got one and only one root object
 			this->RawAssign(*stack_.template Pop<ValueType>(1));	// Add this-> to prevent issue 13.
 			parseError_ = 0;
@@ -727,21 +720,31 @@ public:
 		\param str Mutable zero-terminated string to be parsed.
 		\return The document itself for fluent API.
 	*/
-	template <unsigned parseFlags>
+	template <unsigned parseFlags, typename SourceEncoding>
 	GenericDocument& ParseInsitu(Ch* str) {
 		GenericInsituStringStream<Encoding> s(str);
-		return ParseStream<parseFlags | kParseInsituFlag>(s);
+		return ParseStream<parseFlags | kParseInsituFlag, SourceEncoding>(s);
+	}
+
+	template <unsigned parseFlags>
+	GenericDocument& ParseInsitu(Ch* str) {
+		return ParseInsitu<parseFlags, Encoding>(str);
 	}
 
 	//! Parse JSON text from a read-only string.
 	/*! \tparam parseFlags Combination of ParseFlag (must not contain kParseInsituFlag).
 		\param str Read-only zero-terminated string to be parsed.
 	*/
-	template <unsigned parseFlags>
+	template <unsigned parseFlags, typename SourceEncoding>
 	GenericDocument& Parse(const Ch* str) {
 		RAPIDJSON_ASSERT(!(parseFlags & kParseInsituFlag));
-		GenericStringStream<Encoding> s(str);
-		return ParseStream<parseFlags>(s);
+		GenericStringStream<SourceEncoding> s(str);
+		return ParseStream<parseFlags, SourceEncoding>(s);
+	}
+
+	template <unsigned parseFlags>
+	GenericDocument& Parse(const Ch* str) {
+		return Parse<parseFlags, Encoding>(str);
 	}
 
 	//! Whether a parse error was occured in the last parsing.
@@ -759,11 +762,8 @@ public:
 	//! Get the capacity of stack in bytes.
 	size_t GetStackCapacity() const { return stack_.GetCapacity(); }
 
-private:
-	// Prohibit assignment
-	GenericDocument& operator=(const GenericDocument&);
-
-	friend class GenericReader<Encoding, Allocator>;	// for Reader to call the following private handler functions
+//private:
+	//friend class GenericReader<Encoding>;	// for Reader to call the following private handler functions
 
 	// Implementation of Handler
 	void Null()	{ new (stack_.template Push<ValueType>()) ValueType(); }
@@ -795,6 +795,7 @@ private:
 		stack_.template Top<ValueType>()->SetArrayRaw(elements, elementCount, GetAllocator());
 	}
 
+private:
 	void ClearStack() {
 		if (Allocator::kNeedFree)
 			while (stack_.GetSize() > 0)	// Here assumes all elements in stack array are GenericValue (Member is actually 2 GenericValue objects)
@@ -812,9 +813,5 @@ private:
 typedef GenericDocument<UTF8<> > Document;
 
 } // namespace rapidjson
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
 
 #endif // RAPIDJSON_DOCUMENT_H_

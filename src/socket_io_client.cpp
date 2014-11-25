@@ -7,7 +7,7 @@
 * See examples at https://github.com/kennytm/rapidjson.
 */
 
-#include "socket_io_client.h"
+#include "socket_io_client.hpp"
 #include <sstream>
 #include <boost/tokenizer.hpp>
 // Comment this out to disable handshake logging to stdout
@@ -20,37 +20,32 @@ using std::stringstream;
 // Event handlers
 
 
-socketio_client_handler::socketio_client_handler() :
-   m_heartbeatActive(false),
-   m_connected(false),
-   m_con_listener(NULL),
-   m_io_listener(NULL),
-   m_heartbeatTimeout(0),
-   m_network_thread(NULL)
-{
-   m_client.clear_access_channels(websocketpp::log::alevel::all);
-   m_client.set_access_channels(websocketpp::log::alevel::connect);
-   m_client.set_access_channels(websocketpp::log::alevel::disconnect);
-   m_client.set_access_channels(websocketpp::log::alevel::app);
+// socketio_client_handler::socketio_client_handler()
+// {
+//    // LOG('HERE');
+//    // m_client.clear_access_channels(websocketpp::log::alevel::all);
+//    // m_client.set_access_channels(websocketpp::log::alevel::connect);
+//    // m_client.set_access_channels(websocketpp::log::alevel::disconnect);
+//    // m_client.set_access_channels(websocketpp::log::alevel::app);
 
-   // Initialize the Asio transport policy
-   m_client.init_asio();
+//    // // Initialize the Asio transport policy
+//    // m_client.init_asio();
 
-   // Bind the handlers we are using
-   using websocketpp::lib::placeholders::_1;
-   using websocketpp::lib::bind;
-   m_client.set_open_handler(bind(&socketio_client_handler::on_open,this,::_1));
-   m_client.set_close_handler(bind(&socketio_client_handler::on_close,this,::_1));
-   m_client.set_fail_handler(bind(&socketio_client_handler::on_fail,this,::_1));
-   m_client.set_message_handler(bind(&socketio_client_handler::on_message,this,::_1,::_2));
-}
+//    // // Bind the handlers we are using
+//    // using websocketpp::lib::placeholders::_1;
+//    // using websocketpp::lib::bind;
+//    // m_client.set_open_handler(bind(&socketio_client_handler::on_open,this,::_1));
+//    // m_client.set_close_handler(bind(&socketio_client_handler::on_close,this,::_1));
+//    // m_client.set_fail_handler(bind(&socketio_client_handler::on_fail,this,::_1));
+//    // m_client.set_message_handler(bind(&socketio_client_handler::on_message,this,::_1,::_2));
+// }
 
-socketio_client_handler::~socketio_client_handler()
-{
-    close();
-}
+// socketio_client_handler::~socketio_client_handler()
+// {
+//     // close();
+// }
 
-// Websocket++ client handler
+// // Websocket++ client handler
 
 void socketio_client_handler::on_fail(connection_hdl con)
 {

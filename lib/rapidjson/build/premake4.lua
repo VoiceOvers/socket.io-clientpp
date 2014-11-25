@@ -50,7 +50,6 @@ solution "test"
 
 	location ("./" .. (_ACTION or ""))
 	language "C++"
-	flags { "ExtraWarnings" }
 	
 	configuration "debug"
 		defines { "DEBUG" }
@@ -64,10 +63,13 @@ solution "test"
 		defines { "_CRT_SECURE_NO_WARNINGS" }
 		
 	configuration "gmake"
-		buildoptions "-msse4.2 -Werror=cast-qual"
+		buildoptions "-msse4.2"
 
 	project "gtest"
 		kind "StaticLib"
+		
+		defines { "GTEST_HAS_PTHREAD=0" }
+
 		files { 
 			"../thirdparty/gtest/src/gtest-all.cc",
 			"../thirdparty/gtest/src/**.h",
@@ -132,7 +134,6 @@ solution "example"
 	platforms { "x32", "x64" }
 	location ("./" .. (_ACTION or ""))
 	language "C++"
-	flags { "ExtraWarnings" }
 	includedirs "../include/"
 
 	configuration "debug"
@@ -154,6 +155,11 @@ solution "example"
 	project "pretty"
 		kind "ConsoleApp"
 		files "../example/pretty/*"
+		setTargetObjDir("../bin")
+
+	project "prettyauto"
+		kind "ConsoleApp"
+		files "../example/prettyauto/*"
 		setTargetObjDir("../bin")
 
 	project "tutorial"

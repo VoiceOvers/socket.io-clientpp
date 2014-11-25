@@ -19,7 +19,7 @@ TEST(Reader, ParseTrue) {
 	ParseBoolHandler<true> h;
 	Reader reader;
 	reader.ParseTrue<0>(s, h);
-	EXPECT_EQ(1u, h.step_);
+	EXPECT_EQ(1, h.step_);
 }
 
 TEST(Reader, ParseFalse) {
@@ -27,7 +27,7 @@ TEST(Reader, ParseFalse) {
 	ParseBoolHandler<false> h;
 	Reader reader;
 	reader.ParseFalse<0>(s, h);
-	EXPECT_EQ(1u, h.step_);
+	EXPECT_EQ(1, h.step_);
 }
 
 struct ParseIntHandler : BaseReaderHandler<> {
@@ -82,8 +82,8 @@ TEST(Reader, ParseNumberHandler) {
 		Handler h; \
 		Reader reader; \
 		reader.ParseNumber<0>(s, h); \
-		EXPECT_EQ(1u, h.step_); \
-		EXPECT_EQ(double(x), h.actual_); \
+		EXPECT_EQ(1, h.step_); \
+		EXPECT_EQ(x, h.actual_); \
 	}
 
 #define TEST_DOUBLE(str, x) \
@@ -92,7 +92,7 @@ TEST(Reader, ParseNumberHandler) {
 		ParseDoubleHandler h; \
 		Reader reader; \
 		reader.ParseNumber<0>(s, h); \
-		EXPECT_EQ(1u, h.step_); \
+		EXPECT_EQ(1, h.step_); \
 		EXPECT_DOUBLE_EQ(x, h.actual_); \
 	}
 
@@ -203,14 +203,14 @@ TEST(Reader, ParseString) {
 		Encoding::Ch* buffer = StrDup(x); \
 		GenericInsituStringStream<Encoding> is(buffer); \
 		ParseStringHandler<Encoding> h; \
-		GenericReader<Encoding> reader; \
-		reader.ParseString<kParseInsituFlag>(is, h); \
+		GenericReader<Encoding, Encoding> reader; \
+		reader.ParseString<kParseInsituFlag | kParseValidateEncodingFlag>(is, h); \
 		EXPECT_EQ(0, StrCmp<Encoding::Ch>(e, h.str_)); \
 		EXPECT_EQ(StrLen(e), h.length_); \
 		free(buffer); \
 		GenericStringStream<Encoding> s(x); \
 		ParseStringHandler<Encoding> h2; \
-		GenericReader<Encoding> reader2; \
+		GenericReader<Encoding, Encoding> reader2; \
 		reader2.ParseString<0>(s, h2); \
 		EXPECT_EQ(0, StrCmp<Encoding::Ch>(e, h2.str_)); \
 		EXPECT_EQ(StrLen(e), h2.length_); \
@@ -273,8 +273,19 @@ TEST(Reader, ParseString) {
 		Reader reader;
 		reader.ParseString<0>(s, h);
 		EXPECT_EQ(0, memcmp(e, h.str_, h.length_ + 1));
-		EXPECT_EQ(11u, h.length_);
+		EXPECT_EQ(11, h.length_);
 	}
+}
+
+TEST(Reader, ParseString_Transcoding) {
+	const char* x = "\"Hello\"";
+	const wchar_t* e = L"Hello";
+	GenericStringStream<UTF8<> > is(x);
+	GenericReader<UTF8<>, UTF16<> > reader;
+	ParseStringHandler<UTF16<> > h;
+	reader.ParseString<0>(is, h);
+	EXPECT_EQ(0, StrCmp<UTF16<>::Ch>(e, h.str_));
+	EXPECT_EQ(StrLen(e), h.length_);
 }
 
 TEST(Reader, ParseString_NonDestructive) {
@@ -283,30 +294,86 @@ TEST(Reader, ParseString_NonDestructive) {
 	Reader reader;
 	reader.ParseString<0>(s, h);
 	EXPECT_EQ(0, StrCmp("Hello\nWorld", h.str_));
-	EXPECT_EQ(11u, h.length_);
+	EXPECT_EQ(11, h.length_);
 }
 
-#ifdef RAPIDJSON_USE_EXCEPTION
+bool TestString(const char* str) {
+	StringStream s(str);
+	BaseReaderHandler<> h;
+	Reader reader;
+	return reader.Parse<kParseValidateEncodingFlag>(s, h);
+}
+
 TEST(Reader, ParseString_Error) {
-#define TEST_STRING_ERROR(str) \
+#define ARRAY(...) { __VA_ARGS__ }
+#define TEST_STRINGARRAY_ERROR(Encoding, array) \
 	{ \
-		char buffer[1001]; \
-		strncpy(buffer, str, 1000); \
-		InsituStringStream s(buffer); \
-		BaseReaderHandler<> h; \
-		Reader reader; \
-		EXPECT_ERROR(reader.ParseString<0>(s, h), ParseException); \
+		static const Encoding::Ch e[] = array; \
+		EXPECT_FALSE(TestString(e)); \
 	}
 
-	TEST_STRING_ERROR("\"\\a\"");				// Unknown escape character
-	TEST_STRING_ERROR("\"\\uABCG\"");			// Incorrect hex digit after \\u escape
-	TEST_STRING_ERROR("\"\\uD800X\"");			// Missing the second \\u in surrogate pair
-	TEST_STRING_ERROR("\"\\uD800\\uFFFF\"");	// The second \\u in surrogate pair is invalid
-	TEST_STRING_ERROR("\"Test");				// lacks ending quotation before the end of string
+	EXPECT_FALSE(TestString("[\"\\a\"]"));				// Unknown escape character
+	EXPECT_FALSE(TestString("[\"\\uABCG\"]"));			// Incorrect hex digit after \\u escape
+	EXPECT_FALSE(TestString("[\"\\uD800X\"]"));			// Missing the second \\u in surrogate pair
+	EXPECT_FALSE(TestString("[\"\\uD800\\uFFFF\"]"));	// The second \\u in surrogate pair is invalid
+	EXPECT_FALSE(TestString("[\"Test]"));				// lacks ending quotation before the end of string
 
-#undef TEST_STRING_ERROR
+	// http://www.cl.cam.ac.uk/~mgk25/ucs/examples/UTF-8-test.txt
+
+	// 3  Malformed sequences 
+
+	// 3.1 Unexpected continuation bytes
+	{
+		 char e[] = { '[', '\"', 0, '\"', ']', '\0' };
+		 for (unsigned char c = 0x80u; c <= 0xBFu; c++) {
+			e[2] = c;
+			bool b;
+			EXPECT_FALSE(b = TestString(e));
+			if (b)
+				std::cout << (unsigned)(unsigned char)c << std::endl;
+		 }
+	}
+
+	// 3.2 Lonely start characters, 3.5 Impossible bytes
+	{
+		char e[] = { '[', '\"', 0, ' ', '\"', ']', '\0' };
+		for (unsigned c = 0xC0u; c <= 0xFFu; c++) {
+			e[2] = (char)c;
+			EXPECT_FALSE(TestString(e));
+		}
+	}
+
+	// 4  Overlong sequences 
+
+	// 4.1  Examples of an overlong ASCII character
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xC0u, 0xAFu, '\"', ']', '\0'));
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xE0u, 0x80u, 0xAFu, '\"', ']', '\0'));
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xF0u, 0x80u, 0x80u, 0xAFu, '\"', ']', '\0'));
+
+	// 4.2  Maximum overlong sequences 
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xC1u, 0xBFu, '\"', ']', '\0'));
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xE0u, 0x9Fu, 0xBFu, '\"', ']', '\0'));
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xF0u, 0x8Fu, 0xBFu, 0xBFu, '\"', ']', '\0'));
+
+	// 4.3  Overlong representation of the NUL character 
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xC0u, 0x80u, '\"', ']', '\0'));
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xE0u, 0x80u, 0x80u, '\"', ']', '\0'));
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xF0u, 0x80u, 0x80u, 0x80u, '\"', ']', '\0'));
+
+	// 5  Illegal code positions
+
+	// 5.1 Single UTF-16 surrogates
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xEDu, 0xA0u, 0x80u, '\"', ']', '\0'));
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xEDu, 0xADu, 0xBFu, '\"', ']', '\0'));
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xEDu, 0xAEu, 0x80u, '\"', ']', '\0'));
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xEDu, 0xAFu, 0xBFu, '\"', ']', '\0'));
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xEDu, 0xB0u, 0x80u, '\"', ']', '\0'));
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xEDu, 0xBEu, 0x80u, '\"', ']', '\0'));
+	TEST_STRINGARRAY_ERROR(UTF8<>, ARRAY('[', '\"', 0xEDu, 0xBFu, 0xBFu, '\"', ']', '\0'));
+
+#undef ARRAY
+#undef TEST_STRINGARRAY_ERROR
 }
-#endif // RAPIDJSON_USE_EXCEPTION
 
 template <unsigned count>
 struct ParseArrayHandler : BaseReaderHandler<> {
@@ -314,8 +381,8 @@ struct ParseArrayHandler : BaseReaderHandler<> {
 
 	void Default() { FAIL(); }
 	void Uint(unsigned i) { EXPECT_EQ(step_, i); step_++; } 
-	void StartArray() { EXPECT_EQ(0u, step_); step_++; }
-	void EndArray(SizeType) { step_++; }
+	void StartArray() { EXPECT_EQ(0, step_); step_++; }
+	void EndArray(SizeType elementCount) { step_++; }
 
 	unsigned step_;
 };
@@ -326,7 +393,7 @@ TEST(Reader, ParseEmptyArray) {
 	ParseArrayHandler<0> h;
 	Reader reader;
 	reader.ParseArray<0>(s, h);
-	EXPECT_EQ(2u, h.step_);
+	EXPECT_EQ(2, h.step_);
 	free(json);
 }
 
@@ -336,11 +403,10 @@ TEST(Reader, ParseArray) {
 	ParseArrayHandler<4> h;
 	Reader reader;
 	reader.ParseArray<0>(s, h);
-	EXPECT_EQ(6u, h.step_);
+	EXPECT_EQ(6, h.step_);
 	free(json);
 }
 
-#ifdef RAPIDJSON_USE_EXCEPTION
 TEST(Reader, ParseArray_Error) {
 #define TEST_ARRAY_ERROR(str) \
 	{ \
@@ -348,8 +414,8 @@ TEST(Reader, ParseArray_Error) {
 		strncpy(buffer, str, 1000); \
 		InsituStringStream s(buffer); \
 		BaseReaderHandler<> h; \
-		Reader<UTF8<>, CrtAllocator> reader; \
-		EXPECT_ERROR(reader.ParseArray<0>(s, h), ParseException); \
+		GenericReader<UTF8<>, UTF8<>, CrtAllocator> reader; \
+		EXPECT_FALSE(reader.Parse<0>(s, h)); \
 	}
 
 	// Must be a comma or ']' after an array element.
@@ -359,12 +425,11 @@ TEST(Reader, ParseArray_Error) {
 
 #undef TEST_ARRAY_ERROR
 }
-#endif // RAPIDJSON_USE_EXCEPTION
 
 struct ParseObjectHandler : BaseReaderHandler<> {
 	ParseObjectHandler() : step_(0) {}
 
-	void Null() { EXPECT_EQ(8u, step_); step_++; }
+	void Null() { EXPECT_EQ(8, step_); step_++; }
 	void Bool(bool b) { 
 		switch(step_) {
 			case 4: EXPECT_TRUE(b); step_++; break;
@@ -382,8 +447,8 @@ struct ParseObjectHandler : BaseReaderHandler<> {
 		}
 	}
 	void Uint(unsigned i) { Int(i); }
-	void Double(double d) { EXPECT_EQ(12u, step_); EXPECT_EQ(3.1416, d); step_++; }
-	void String(const char* str, size_t, bool) { 
+	void Double(double d) { EXPECT_EQ(12, step_); EXPECT_EQ(3.1416, d); step_++; }
+	void String(const char* str, size_t length, bool copy) { 
 		switch(step_) {
 			case 1: EXPECT_STREQ("hello", str); step_++; break;
 			case 2: EXPECT_STREQ("world", str); step_++; break;
@@ -396,10 +461,10 @@ struct ParseObjectHandler : BaseReaderHandler<> {
 			default: FAIL();
 		}
 	}
-	void StartObject() { EXPECT_EQ(0u, step_); step_++; }
-	void EndObject(SizeType memberCount) { EXPECT_EQ(19u, step_); EXPECT_EQ(7u, memberCount); step_++;}
-	void StartArray() { EXPECT_EQ(14u, step_); step_++; }
-	void EndArray(SizeType elementCount) { EXPECT_EQ(18u, step_); EXPECT_EQ(3u, elementCount); step_++;}
+	void StartObject() { EXPECT_EQ(0, step_); step_++; }
+	void EndObject(SizeType memberCount) { EXPECT_EQ(19, step_); EXPECT_EQ(7, memberCount); step_++;}
+	void StartArray() { EXPECT_EQ(14, step_); step_++; }
+	void EndArray(SizeType elementCount) { EXPECT_EQ(18, step_); EXPECT_EQ(3, elementCount); step_++;}
 
 	unsigned step_;
 };
@@ -414,7 +479,7 @@ TEST(Reader, ParseObject) {
 		ParseObjectHandler h;
 		Reader reader;
 		reader.ParseObject<kParseInsituFlag>(s, h);
-		EXPECT_EQ(20u, h.step_);
+		EXPECT_EQ(20, h.step_);
 		free(json2);
 	}
 
@@ -424,7 +489,7 @@ TEST(Reader, ParseObject) {
 		ParseObjectHandler h;
 		Reader reader;
 		reader.ParseObject<0>(s, h);
-		EXPECT_EQ(20u, h.step_);
+		EXPECT_EQ(20, h.step_);
 	}
 }
 
@@ -432,8 +497,8 @@ struct ParseEmptyObjectHandler : BaseReaderHandler<> {
 	ParseEmptyObjectHandler() : step_(0) {}
 
 	void Default() { FAIL(); }
-	void StartObject() { EXPECT_EQ(0u, step_); step_++; }
-	void EndObject(SizeType) { EXPECT_EQ(1u, step_); step_++; }
+	void StartObject() { EXPECT_EQ(0, step_); step_++; }
+	void EndObject(SizeType memberCount) { EXPECT_EQ(1, step_); step_++; }
 
 	unsigned step_;
 };
@@ -443,10 +508,9 @@ TEST(Reader, Parse_EmptyObject) {
 	ParseEmptyObjectHandler h;
 	Reader reader;
 	reader.ParseObject<0>(s, h);
-	EXPECT_EQ(2u, h.step_);
+	EXPECT_EQ(2, h.step_);
 }
 
-#ifdef RAPIDJSON_USE_EXCEPTION 
 TEST(Reader, ParseObject_Error) {
 #define TEST_OBJECT_ERROR(str) \
 	{ \
@@ -454,8 +518,8 @@ TEST(Reader, ParseObject_Error) {
 		strncpy(buffer, str, 1000); \
 		InsituStringStream s(buffer); \
 		BaseReaderHandler<> h; \
-		Reader<UTF8<>, CrtAllocator> reader; \
-		EXPECT_ERROR(reader.ParseObject<0>(s, h), ParseException); \
+		GenericReader<UTF8<>, UTF8<>, CrtAllocator> reader; \
+		EXPECT_FALSE(reader.Parse<0>(s, h)); \
 	}
 
 	// Name of an object member must be a string
@@ -477,9 +541,7 @@ TEST(Reader, ParseObject_Error) {
 
 #undef TEST_OBJECT_ERROR
 }
-#endif // RAPIDJSON_USE_EXCEPTION
 
-#ifdef RAPIDJSON_USE_EXCEPTION
 TEST(Reader, Parse_Error) {
 #define TEST_ERROR(str) \
 	{ \
@@ -488,7 +550,7 @@ TEST(Reader, Parse_Error) {
 		InsituStringStream s(buffer); \
 		BaseReaderHandler<> h; \
 		Reader reader; \
-		EXPECT_ERROR(reader.Parse<0>(s, h), ParseException); \
+		EXPECT_FALSE(reader.Parse<0>(s, h)); \
 	}
 
 	// Text only contains white space(s)
@@ -514,4 +576,3 @@ TEST(Reader, Parse_Error) {
 
 #undef TEST_ERROR
 }
-#endif // RAPIDJSON_USE_EXCEPTION
